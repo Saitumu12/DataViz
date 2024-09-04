@@ -1,0 +1,189 @@
+from flask import Flask, render_template, request
+import pandas as pd
+from datetime import datetime, timezone, timedelta
+import json
+
+app = Flask(__name__)
+
+uploaded_data = None
+filtered_data = None
+selected_columns = None
+@app.route('/', methods=['GET', 'POST'])
+def homepage():
+    return render_template('homepage.html')
+
+
+@app.route('/upload', methods=['GET', 'POST'])
+def upload_file():
+    global uploaded_data
+    if request.method == 'POST':
+        file = request.files['file']
+        # if file:
+        #     uploaded_data = pd.read_csv(file)
+        #     print(uploaded_data)
+        if file:
+            # Check the file extension
+            file_extension = file.filename.rsplit('.', 1)[1].lower()
+
+            if file_extension == 'csv':
+                # If the file is a CSV, read it using pandas
+                uploaded_data = pd.read_csv(file)
+                # uploaded_data = convert_to_numeric(uploaded_data)
+                print(uploaded_data.head())
+
+                print(uploaded_data)
+            elif file_extension == 'txt':
+                # If the file is a TXT, read it as plain text, split into columns, and create a DataFrame
+                content = file.read().decode('utf-8')
+                rows = [line.split(',') for line in content.split('\n') if line.strip()]
+
+                # Create default column names if not present
+                column_names = [f'Column_{i}' for i in range(len(rows[0]))]
+
+                data = rows[0:]
+                uploaded_data = pd.DataFrame(data, columns=column_names)
+            uploaded_data = uploaded_data.apply(pd.to_numeric, errors='coerce')
+            uploaded_data = uploaded_data.dropna()
+
+            print(uploaded_data)
+
+            return render_template('filter.html')
+    return render_template('upload.html')
+def convert_to_numeric(df):
+    for col in df.columns:
+        try:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        except ValueError:
+            pass  # Ignore non-convertible columns
+    return df
+# @app.route('/filter', methods=['GET', 'POST'])
+# def filter_data():
+#     global uploaded_data
+#     if request.method == 'POST':
+#         start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
+#         end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
+#         uploaded_data['Datetime'] = pd.to_datetime(uploaded_data['Datetime'])
+#         filtered_data = uploaded_data[(uploaded_data['Datetime'] >= start_date) & (uploaded_data['Datetime'] <= end_date)]
+#         return render_template('select_columns.html', columns=uploaded_data.columns.tolist())
+#     return render_template('filter.html')
+
+@app.route('/filter', methods=['POST'])
+def filter_data():
+    global uploaded_data
+    global filtered_data
+    if request.method == 'POST':
+        # start_date_str = request.form['start_date']
+        # end_date_str = request.form['end_date']
+        # uploaded_data['Datetime (UTC)'] = pd.to_datetime(uploaded_data['Datetime (UTC)'])
+        # uploaded_data['Datetime (UTC)'] = pd.to_datetime(uploaded_data['Datetime (UTC)'])
+        # uploaded_data.set_index('Datetime (UTC)', inplace=True)
+        # print(uploaded_data.head())
+        # # filtered_data = uploaded_data[(uploaded_data['Datetime (UTC)'] >= start_date_str) & (uploaded_data['Datetime (UTC)'] <= end_date_str)]
+        # filtered_data = uploaded_data[(uploaded_data.index >= start_date_str) & (uploaded_data.index <= end_date_str)]
+        # print(filtered_data.head())
+
+        # columns_list = uploaded_data.columns.tolist()
+        #
+        # # Remove the first two values from the list
+        # updated_columns_list = columns_list[2:]
+        filtered_data = uploaded_data
+        return render_template('select_columns.html', columns=uploaded_data.columns.tolist())
+    return render_template('filter.html')
+
+
+# @app.route('/plot', methods=['POST'])
+# def plot_graph():
+#     global uploaded_data, selected_columns, filtered_data
+#     if request.method == 'POST':
+#         selected_columns = request.form.getlist('columns')
+#         selected_data = filtered_data[selected_columns]
+#
+#         # Assume you have a function to generate ECharts options based on selected data
+#         chart_options = generate_chart_options(selected_data)
+#
+#         return render_template('plot.html', chart_options=json.dumps(chart_options))
+#     return render_template('select_columns.html', columns=filtered_data.columns.tolist())
+
+
+@app.route('/plot', methods=['POST'])
+def plot_graph():
+    global uploaded_data, selected_columns, filtered_data
+
+    if request.method == 'POST':
+        selected_columns = request.form.getlist('columns')
+        selected_data = filtered_data[selected_columns]
+
+        # Assume you have a function to generate ECharts options based on selected data
+        chart_options = generate_chart_options(selected_data)
+
+        # Convert selected_data to a list of dictionaries for each column
+        data_by_column = [{column: selected_data[column].tolist()} for column in selected_data.columns]
+
+        return render_template('plot.html', chart_options=json.dumps(chart_options), data_by_column=json.dumps(data_by_column))
+
+    return render_template('select_columns.html', columns=filtered_data.columns.tolist())
+
+
+
+
+
+# def generate_chart_options(data):
+#     # Implement your logic to generate ECharts options based on selected data
+#     # This is just a placeholder; you need to customize it based on your needs
+#     chart_options = {
+#         'xAxis': {'type': 'category', 'data': data.index.tolist()},
+#         'yAxis': {'type': 'value'},
+#         'series': [{'data': data[column].tolist(), 'type': 'line', 'name': column} for column in data.columns]
+#     }
+#     return chart_options
+def generate_chart_options(data):
+    # Implement your logic to generate ECharts options based on selected data
+    # This is just a placeholder; you need to customize it based on your needs
+    index_as_strings = data.index.astype(str).tolist()
+
+    chart_options = {
+        # 'xAxis': {'type': 'category', 'data': data.index.astype(str)},
+        'xAxis': {'type': 'category', 'data': index_as_strings},
+        'yAxis': {'type': 'value'},
+        'series': [{'data': data[column].tolist(), 'type': 'line', 'name': column} for column in data.columns],
+        'legend': {'data': data.columns.tolist()},  # Add legend for column names
+    }
+    return chart_options
+
+
+@app.route('/statistics', methods=['POST'])
+def show_statistics():
+    global uploaded_data
+    if uploaded_data is not None:
+        # Calculate basic statistics
+        statistics_info = calculate_statistics(uploaded_data)
+        print(statistics_info)
+        return render_template('statistics.html', statistics_info=statistics_info)
+    else:
+        return render_template('upload.html')
+
+
+def calculate_statistics(data):
+    # Use describe method to get basic statistics
+    statdata = data
+    statistics_summary = statdata.describe(percentiles=[.25, .5, .75])
+
+    # Extract specific statistics from the summary
+    statistics_info = pd.DataFrame({
+        'Column': statistics_summary.columns,
+        'count': statistics_summary.loc['count'],
+        'mean': statistics_summary.loc['mean'] if 'mean' in statistics_summary.index else None,
+        'min': statistics_summary.loc['min'] if 'min' in statistics_summary.index else None,
+        '25%': statistics_summary.loc['25%'] if '25%' in statistics_summary.index else None,
+        'median': statistics_summary.loc['50%'] if '50%' in statistics_summary.index else None,
+        '75%': statistics_summary.loc['75%'] if '75%' in statistics_summary.index else None,
+        'max': statistics_summary.loc['max'] if 'min' in statistics_summary.index else None,
+        'std_dev': statistics_summary.loc['std'] if 'std' in statistics_summary.index else None
+        # Add more statistics as needed
+    })
+
+    return statistics_info
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
